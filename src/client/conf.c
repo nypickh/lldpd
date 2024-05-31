@@ -27,23 +27,18 @@
 void
 register_commands_configure(struct cmd_node *root)
 {
-	struct cmd_node *configure = commands_new(
-		root,
-		"configure",
-		"Change system settings",
-		NULL, NULL, NULL);
-	struct cmd_node *unconfigure = commands_new(
-		root,
-		"unconfigure",
-		"Unconfigure system settings",
-		NULL, NULL, NULL);
-	commands_privileged(configure);
-	commands_privileged(unconfigure);
+	struct cmd_node *configure =
+	    commands_new(root, "configure", "Change system settings", NULL, NULL, NULL);
+	struct cmd_node *unconfigure = commands_new(root, "unconfigure",
+	    "Unconfigure system settings", NULL, NULL, NULL);
+	commands_privileged(commands_lock(configure));
+	commands_privileged(commands_lock(unconfigure));
 	cmd_restrict_ports(configure);
 	cmd_restrict_ports(unconfigure);
 
 	register_commands_configure_system(configure, unconfigure);
 	register_commands_configure_lldp(configure, unconfigure);
 	register_commands_configure_med(configure, unconfigure);
+	register_commands_configure_inventory(configure, unconfigure);
 	register_commands_configure_dot3(configure);
 }

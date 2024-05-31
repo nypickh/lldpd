@@ -1,28 +1,35 @@
 class Lldpd < Formula
   desc "Implementation of IEEE 802.1ab (LLDP)"
-  homepage "https://vincentbernat.github.io/lldpd/"
-  url "https://media.luffy.cx/files/lldpd/lldpd-1.0.1.tar.gz"
-  sha256 "450b622aac7ae1758f1ef82f3b7b94ec47f2ff33abfb0e6ac82555b9ee55f151"
+  homepage "https://lldpd.github.io/"
+  url "https://media.luffy.cx/files/lldpd/lldpd-1.0.18.tar.gz"
+  sha256 "4b320675d608901a4a0d4feff8f96bb846d4913d914b0cf75b7d0ae80490f2f7"
+  license "ISC"
+
+  livecheck do
+    url "https://github.com/lldpd/lldpd.git"
+  end
 
   option "with-snmp", "Build SNMP subagent support"
 
   depends_on "pkg-config" => :build
-  depends_on "readline"
   depends_on "libevent"
   depends_on "net-snmp" if build.with? "snmp"
+  depends_on "readline"
+
+  uses_from_macos "libxml2"
 
   def install
     readline = Formula["readline"]
-    args = [
-      "--prefix=#{prefix}",
-      "--sysconfdir=#{etc}",
-      "--localstatedir=#{var}",
-      "--with-xml",
-      "--with-readline",
-      "--with-privsep-chroot=/var/empty",
-      "--with-launchddaemonsdir=no",
-      "CPPFLAGS=-I#{readline.include} -DRONLY=1",
-      "LDFLAGS=-L#{readline.lib}",
+    args = %W[
+      --prefix=#{prefix}
+      --sysconfdir=#{etc}
+      --localstatedir=#{var}
+      --with-launchddaemonsdir=no
+      --with-privsep-chroot=/var/empty
+      --with-readline
+      --with-xml
+      CPPFLAGS=-I#{readline.include}\ -DRONLY=1
+      LDFLAGS=-L#{readline.lib}
     ]
     args << (build.with?("snmp") ? "--with-snmp" : "--without-snmp")
 
@@ -73,27 +80,10 @@ class Lldpd < Formula
     end
   end
 
-  plist_options :startup => true
-
-  def plist
-    additional_args = ""
-    additional_args += "<string>-x</string>" if build.with? "snmp"
-    <<~EOS
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-      <dict>
-        <key>Label</key>
-        <string>#{plist_name}</string>
-        <key>ProgramArguments</key>
-        <array>
-          <string>#{opt_sbin}/lldpd</string>
-          #{additional_args}
-        </array>
-        <key>RunAtLoad</key><true/>
-        <key>KeepAlive</key><true/>
-      </dict>
-      </plist>
-    EOS
+  plist_options startup: true
+  service do
+    run build.with?("snmp") ? [opt_sbin/"lldpd", "-x"] : opt_sbin/"lldpd"
+    keep_alive true
+    require_root true
   end
 end

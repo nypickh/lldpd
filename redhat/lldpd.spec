@@ -44,11 +44,11 @@
 
 Summary: Implementation of IEEE 802.1ab (LLDP)
 Name: lldpd
-Version: 1.0.1
+Version: 1.0.18
 Release: 1%{?dist}
-License: MIT
+License: ISC
 Group: System/Management
-URL: http://vincentbernat.github.com/lldpd/
+URL: https://lldpd.github.io/
 Source0: http://media.luffy.cx/files/lldpd/%{name}-%{version}.tar.gz
 Source1: lldpd.init%{?suse_version:.suse}
 Source2: lldpd.sysconfig
@@ -195,6 +195,7 @@ make %{?_smp_mflags}
 
 %install
 make install DESTDIR=$RPM_BUILD_ROOT
+rm -f $RPM_BUILD_ROOT/%{_libdir}/liblldpctl.la
 %if %{without systemd}
 install -d $RPM_BUILD_ROOT/%{_initrddir}
 install -m755 %{SOURCE1} $RPM_BUILD_ROOT/%{_initrddir}/lldpd
@@ -311,12 +312,62 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 %{_libdir}/liblldpctl.so
 %{_libdir}/liblldpctl.a
-%{_libdir}/liblldpctl.la
 %{_libdir}/pkgconfig/lldpctl.pc
 %{_includedir}/lldpctl.h
 %{_includedir}/lldp-const.h
 
 %changelog
+* Sun Jan 14 2024 Vincent Bernat <bernat@luffy.cx> - 1.0.18-1
+- New upstream version.
+
+* Thu May 18 2023 Vincent Bernat <bernat@luffy.cx> - 1.0.17-1
+- New upstream version.
+
+* Fri Nov 11 2022 Vincent Bernat <bernat@luffy.cx> - 1.0.16-1
+- New upstream version.
+
+* Wed Aug 17 2022 Vincent Bernat <bernat@luffy.cx> - 1.0.15-1
+- New upstream version.
+
+* Sat May 21 2022 Vincent Bernat <bernat@luffy.cx> - 1.0.14-1
+- New upstream version.
+
+* Sat Nov 13 2021 Vincent Bernat <bernat@luffy.cx> - 1.0.13-1
+- New upstream version.
+
+* Fri Aug 20 2021 Vincent Bernat <bernat@luffy.cx> - 1.0.12-1
+- New upstream version.
+
+* Sat May 01 2021 Vincent Bernat <bernat@luffy.cx> - 1.0.11-1
+- New upstream version.
+
+* Fri Apr 09 2021 Vincent Bernat <bernat@luffy.cx> - 1.0.10-1
+- New upstream version.
+
+* Fri Apr 02 2021 Vincent Bernat <bernat@luffy.cx> - 1.0.9-1
+- New upstream version.
+
+* Wed Jan 13 2021 Vincent Bernat <bernat@luffy.cx> - 1.0.8-1
+- New upstream version.
+
+* Sat Oct 31 2020 Vincent Bernat <bernat@luffy.cx> - 1.0.7-1
+- New upstream version.
+
+* Sat Sep 05 2020 Vincent Bernat <bernat@luffy.cx> - 1.0.6-1
+- New upstream version.
+
+* Sat Feb 01 2020 Vincent Bernat <bernat@luffy.cx> - 1.0.5-1
+- New upstream version.
+
+* Sat Jun 15 2019 Vincent Bernat <bernat@luffy.cx> - 1.0.4-1
+- New upstream version.
+
+* Mon Dec 10 2018 Vincent Bernat <bernat@luffy.cx> - 1.0.3-1
+- New upstream version.
+
+* Sat Dec 01 2018 Vincent Bernat <bernat@luffy.cx> - 1.0.2-1
+- New upstream version.
+
 * Mon Apr 09 2018 Vincent Bernat <bernat@luffy.cx> - 1.0.1-1
 - New upstream version.
 

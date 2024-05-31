@@ -44,11 +44,10 @@ may_read(enum priv_context ctx, void *buf, size_t n)
 		res = read(priv_fd(ctx), s + pos, n - pos);
 		switch (res) {
 		case -1:
-			if (errno == EINTR || errno == EAGAIN)
-				continue;
-			/* FALL THROUGH */
+			if (errno == EINTR || errno == EAGAIN) continue;
+			return 1;
 		case 0:
-			return (1);
+			return 1;
 		default:
 			pos += res;
 		}
@@ -68,10 +67,10 @@ must_read(enum priv_context ctx, void *buf, size_t n)
 		res = read(priv_fd(ctx), s + pos, n - pos);
 		switch (res) {
 		case -1:
-			if (errno == EINTR || errno == EAGAIN)
-				continue;
+			if (errno == EINTR || errno == EAGAIN) continue;
 			_exit(0);
-		case 0:	_exit(0);
+		case 0:
+			_exit(0);
 		default:
 			pos += res;
 		}
@@ -90,10 +89,10 @@ must_write(enum priv_context ctx, const void *buf, size_t n)
 		res = write(priv_fd(ctx), s + pos, n - pos);
 		switch (res) {
 		case -1:
-			if (errno == EINTR || errno == EAGAIN)
-				continue;
+			if (errno == EINTR || errno == EAGAIN) continue;
 			_exit(0);
-		case 0:	_exit(0);
+		case 0:
+			_exit(0);
 		default:
 			pos += res;
 		}

@@ -1,7 +1,6 @@
-apipkg==1.4
-execnet==1.4.1
-py==1.4.31
-pyroute2==0.4.12
-pytest==2.9.0
-pytest-xdist==1.14
-wheel==0.29.0
+pyroute2==0.7.3
+pytest==7.2.0
+pytest-helpers-namespace==2021.12.29
+pytest-xdist==3.1.0
+pytest-forked==1.6.0
+scapy==2.4.5

@@ -17,14 +17,81 @@
 
 #include "lldpd.h"
 
+#include <ctype.h>
 #include <unistd.h>
+#include <net/if.h>
 #include <net/bpf.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
+
+#if defined HOST_OS_FREEBSD
+#  include <net/if_mib.h>
+
+/* Quirks needed by some additional interfaces. Currently, this is limited to
+ * disabling LLDP firmware for ixl. OpenBSD and NetBSD disable the ixl
+ * firmware LLDP agent upon driver attach. */
+static void
+asroot_iface_init_quirks(int ifindex, char *name)
+{
+	int sysctl_oid[6];
+	int fw_lldp = 0;
+	size_t driver_name_len;
+	char *driver_name = NULL;
+	char *sysctl_name = NULL;
+
+	/* Check driver. */
+	sysctl_oid[0] = CTL_NET;
+	sysctl_oid[1] = PF_LINK;
+	sysctl_oid[2] = NETLINK_GENERIC;
+	sysctl_oid[3] = IFMIB_IFDATA;
+	sysctl_oid[4] = ifindex;
+	sysctl_oid[5] = IFDATA_DRIVERNAME;
+
+	if (sysctl(sysctl_oid, 6, NULL, &driver_name_len, 0, 0) < 0) {
+		log_warn("interfaces", "unable to get driver name length");
+		goto end;
+	}
+
+	if ((driver_name = malloc(driver_name_len)) == NULL) {
+		log_warnx("interfaces", "insufficient memory for driver name");
+		goto end;
+	}
+
+	if (sysctl(sysctl_oid, 6, driver_name, &driver_name_len, 0, 0) < 0) {
+		log_warn("interfaces", "unable to get driver name");
+		goto end;
+	}
+
+	if (driver_name_len < 4 || strncmp("ixl", driver_name, 3) ||
+	    !isdigit(driver_name[3])) {
+		/* Not ixl */
+		goto end;
+	}
+
+	log_info("interfaces", "ixl driver detected for %s, disabling LLDP in firmware",
+	    name);
+
+	if (asprintf(&sysctl_name, "dev.ixl.%s.fw_lldp", driver_name + 3) == -1) {
+		log_warnx("interfaces", "insufficient memory for sysctl name");
+		goto end;
+	}
+	if (sysctlbyname(sysctl_name, NULL, NULL, &fw_lldp, sizeof(fw_lldp)) < 0) {
+		log_warn("interfaces",
+		    "unable to disable LLDP in firmware for %s via %s", name,
+		    sysctl_name);
+		goto end;
+	}
+
+end:
+	if (driver_name != NULL) free(driver_name);
+	if (sysctl_name != NULL) free(sysctl_name);
+}
+#endif /* HOST_OS_FREEBSD */
 
 int
 asroot_iface_init_os(int ifindex, char *name, int *fd)
@@ -32,10 +99,8 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	int enable, required, rc;
 	struct bpf_insn filter[] = { LLDPD_FILTER_F };
 	struct ifreq ifr = { .ifr_name = {} };
-	struct bpf_program fprog = {
-		.bf_insns = filter,
-		.bf_len = sizeof(filter)/sizeof(struct bpf_insn)
-	};
+	struct bpf_program fprog = { .bf_insns = filter,
+		.bf_len = sizeof(filter) / sizeof(struct bpf_insn) };
 
 #ifndef HOST_OS_SOLARIS
 	int n = 0;
@@ -57,8 +122,7 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	required = ETHER_MAX_LEN + BPF_WORDALIGN(sizeof(struct bpf_hdr));
 	if (ioctl(*fd, BIOCSBLEN, (caddr_t)&required) < 0) {
 		rc = errno;
-		log_warn("privsep",
-		    "unable to set receive buffer size for BPF on %s",
+		log_warn("privsep", "unable to set receive buffer size for BPF on %s",
 		    name);
 		return rc;
 	}
@@ -67,8 +131,7 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	strlcpy(ifr.ifr_name, name, IFNAMSIZ);
 	if (ioctl(*fd, BIOCSETIF, (caddr_t)&ifr) < 0) {
 		rc = errno;
-		log_warn("privsep", "failed to bind interface %s to BPF",
-		    name);
+		log_warn("privsep", "failed to bind interface %s to BPF", name);
 		return rc;
 	}
 
@@ -76,8 +139,7 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	enable = 1;
 	if (ioctl(*fd, BIOCIMMEDIATE, (caddr_t)&enable) < 0) {
 		rc = errno;
-		log_warn("privsep", "unable to disable buffering for %s",
-		    name);
+		log_warn("privsep", "unable to disable buffering for %s", name);
 		return rc;
 	}
 
@@ -85,8 +147,7 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	enable = 1;
 	if (ioctl(*fd, BIOCSHDRCMPLT, (caddr_t)&enable) < 0) {
 		rc = errno;
-		log_warn("privsep",
-		    "unable to set the `header complete` flag for %s",
+		log_warn("privsep", "unable to set the `header complete` flag for %s",
 		    name);
 		return rc;
 	}
@@ -102,24 +163,21 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	{
 		rc = errno;
 		log_warn("privsep",
-		    "unable to set packet direction for BPF filter on %s",
-		    name);
+		    "unable to set packet direction for BPF filter on %s", name);
 		return rc;
 	}
 
 	/* Install read filter */
 	if (ioctl(*fd, BIOCSETF, (caddr_t)&fprog) < 0) {
 		rc = errno;
-		log_warn("privsep", "unable to setup BPF filter for %s",
-		    name);
+		log_warn("privsep", "unable to setup BPF filter for %s", name);
 		return rc;
 	}
 #ifdef BIOCSETWF
 	/* Install write filter (optional) */
 	if (ioctl(*fd, BIOCSETWF, (caddr_t)&fprog) < 0) {
 		rc = errno;
-		log_info("privsep", "unable to setup write BPF filter for %s",
-		    name);
+		log_info("privsep", "unable to setup write BPF filter for %s", name);
 		return rc;
 	}
 #endif
@@ -130,10 +188,12 @@ asroot_iface_init_os(int ifindex, char *name, int *fd)
 	levent_make_socket_nonblocking(*fd);
 	if (ioctl(*fd, BIOCLOCK, (caddr_t)&enable) < 0) {
 		rc = errno;
-		log_info("privsep", "unable to lock BPF interface %s",
-		    name);
+		log_info("privsep", "unable to lock BPF interface %s", name);
 		return rc;
 	}
+#endif
+#if defined HOST_OS_FREEBSD
+	asroot_iface_init_quirks(ifindex, name);
 #endif
 	return 0;
 }
@@ -142,19 +202,14 @@ int
 asroot_iface_description_os(const char *name, const char *description)
 {
 #ifdef IFDESCRSIZE
-#if defined HOST_OS_FREEBSD || defined HOST_OS_OPENBSD
+#  if defined HOST_OS_FREEBSD || defined HOST_OS_OPENBSD
 	char descr[IFDESCRSIZE];
 	int rc, sock = -1;
-#if defined HOST_OS_FREEBSD
-	struct ifreq ifr = {
-		.ifr_buffer = { .buffer = descr,
-				.length = IFDESCRSIZE }
-	};
-#else
-	struct ifreq ifr = {
-		.ifr_data = (caddr_t)descr
-	};
-#endif
+#    if defined HOST_OS_FREEBSD
+	struct ifreq ifr = { .ifr_buffer = { .buffer = descr, .length = IFDESCRSIZE } };
+#    else
+	struct ifreq ifr = { .ifr_data = (caddr_t)descr };
+#    endif
 	strlcpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == 1) {
 		rc = errno;
@@ -165,8 +220,7 @@ asroot_iface_description_os(const char *name, const char *description)
 		/* No neighbor, try to append "was" to the current description */
 		if (ioctl(sock, SIOCGIFDESCR, (caddr_t)&ifr) < 0) {
 			rc = errno;
-			log_warnx("privsep", "unable to get description of %s",
-			    name);
+			log_warnx("privsep", "unable to get description of %s", name);
 			close(sock);
 			return rc;
 		}
@@ -177,8 +231,7 @@ asroot_iface_description_os(const char *name, const char *description)
 				return 0;
 			} else {
 				/* Append was */
-				memmove(descr + 11, descr + 7,
-				    sizeof(descr) - 11);
+				memmove(descr + 11, descr + 7, sizeof(descr) - 11);
 				memcpy(descr, "lldpd: was ", 11);
 			}
 		} else {
@@ -187,19 +240,18 @@ asroot_iface_description_os(const char *name, const char *description)
 		}
 	} else
 		snprintf(descr, sizeof(descr), "lldpd: connected to %s", description);
-#if defined HOST_OS_FREEBSD
+#    if defined HOST_OS_FREEBSD
 	ift.ifr_buffer.length = strlen(descr);
-#endif
+#    endif
 	if (ioctl(sock, SIOCSIFDESCR, (caddr_t)&ifr) < 0) {
 		rc = errno;
-		log_warnx("privsep", "unable to set description of %s",
-		    name);
+		log_warnx("privsep", "unable to set description of %s", name);
 		close(sock);
 		return rc;
 	}
 	close(sock);
 	return 0;
-#endif
+#  endif
 #endif /* IFDESCRSIZE */
 	static int once = 0;
 	if (!once) {

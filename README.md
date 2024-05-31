@@ -1,12 +1,10 @@
-lldpd: implementation of IEEE 802.1ab (LLDP)
-============================================
+# lldpd: implementation of IEEE 802.1ab (LLDP)
 
-[![Build Status](https://secure.travis-ci.org/vincentbernat/lldpd.png?branch=master)](http://travis-ci.org/vincentbernat/lldpd)
+![Build Status](https://github.com/lldpd/lldpd/workflows/CI/badge.svg)
 
-  http://vincentbernat.github.com/lldpd/
+  https://lldpd.github.io/
 
-Features
---------
+## Features
 
 LLDP (Link Layer Discovery Protocol) is an industry standard protocol
 designed to supplant proprietary Link-Layer protocols such as
@@ -35,19 +33,20 @@ Windows is not supported but you can use
 [WinLLDPService](https://github.com/raspi/WinLLDPService/) as a
 transmit-only agent.
 
-Installation
-------------
+## Installation
 
 For general instructions [prefer the
-website](http://vincentbernat.github.io/lldpd/installation.html),
+website](https://lldpd.github.io/installation.html),
 including building from released tarballs.
 
 To compile lldpd from Git, use the following commands:
 
-    ./autogen.sh
-    ./configure
-    make
-    sudo make install
+```sh
+./autogen.sh
+./configure
+make
+sudo make install
+```
 
 lldpd uses privilege separation to increase its security. Two
 processes, one running as root and doing minimal stuff and the other
@@ -62,90 +61,189 @@ syslog, copy `/etc/locatime` into the chroot.
 line. If you don't want to run it as root, just install it setuid or
 setgid `_lldpd`.
 
-Installation (macOS)
------------------------
+## Installation (Docker)
+
+You can use Docker to run `lldpd`:
+
+```sh
+docker run --rm --net=host --uts=host \
+           -v /etc/os-release:/etc/os-release \
+           --cap-add=NET_RAW --cap-add=NET_ADMIN \
+           --name lldpd \
+           ghcr.io/lldpd/lldpd:latest
+```
+
+In place of `latest` which provides you with the latest stable
+version, you may use `1`, `1.0`, `1.0.12` to match specific versions,
+or `master` to get the development version.
+
+To execute `lldpcli`, use:
+
+```sh
+docker exec lldpd lldpcli show neighbors
+```
+
+Or to get the command-line:
+
+```sh
+docker exec -it lldpd lldpcli
+```
+
+## Installation (macOS)
 
 The same procedure as above applies for macOS. However, there are
 simpler alternatives:
 
  1. Use [Homebrew](https://brew.sh):
-
-        brew install lldpd
-        # Or, for the latest version:
-        brew install https://raw.github.com/vincentbernat/lldpd/master/osx/lldpd.rb
-
+```sh
+brew install lldpd
+# Or, for the latest version:
+brew install https://raw.github.com/lldpd/lldpd/master/osx/lldpd.rb
+```
  2. Build an macOS installer package which should work on the same
-    version of macOS:
- 
-        mkdir build && cd build
-        ../configure --prefix=/usr/local --localstatedir=/var --sysconfdir=/private/etc --with-embedded-libevent \
-            --without-snmp
-        make -C osx pkg
-
-    If you want to compile for an older version of macOS, you need
-    to find the right SDK and issues commands like those:
-
-        SDK=/Developer/SDKs/MacOSX10.6.sdk
-        mkdir build && cd build
-        ../configure --prefix=/usr/local --localstatedir=/var --sysconfdir=/private/etc --with-embedded-libevent \
-           --without-snmp \
-           CFLAGS="-mmacosx-version-min=10.6 -isysroot $SDK" \
-           LDFLAGS="-mmacosx-version-min=10.6 -isysroot $SDK"
-        make -C osx pkg
-
-    With recent SDK, you don't need to specify an alternate SDK. They
-    are organized in a way that should enable compatibility with older
-    versions of OSX:
-
-        mkdir build && cd build
-        ../configure --prefix=/usr/local --localstatedir=/var --sysconfdir=/private/etc --with-embedded-libevent \
-           --without-snmp \
-           CFLAGS="-mmacosx-version-min=10.9" \
-           LDFLAGS="-mmacosx-version-min=10.9"
-        make -C osx pkg
-
-    You can check with `otool -l` that you got what you expected in
-    term of supported versions.
+    version of macOS (it is important to use a separate build
+    directory):
+```sh
+mkdir build && cd build
+../configure --prefix=/usr/local --localstatedir=/var --sysconfdir=/private/etc --with-embedded-libevent \
+   --without-snmp
+make -C osx pkg
+```
+If you want to compile for an older version of OS X, you need
+commands like:
+```sh
+mkdir build && cd build
+../configure --prefix=/usr/local --localstatedir=/var --sysconfdir=/private/etc --with-embedded-libevent \
+   --without-snmp \
+   CFLAGS="-mmacosx-version-min=11.1" \
+   LDFLAGS="-mmacosx-version-min=11.1"
+make -C osx pkg
+```
+You can check with `otool -l` that you got what you expected in
+term of supported versions. If you are running on ARM64, you can
+configure a binary supporting both architectures by adding
+`ARCHS="arm64 x86_64"` to the arguments of the `make` command.
 
 If you don't follow the above procedures, you will have to create the
 user/group `_lldpd`. Have a look at how this is done in
 `osx/scripts/postinstall`.
 
-Installation (Android)
-----------------------
+## Installation (Android)
 
-You need to download [Android NDK][]. Once unpacked, you can generate
-a toolchain using the following command:
+1. Don't clone the repo or download the master branch from GitHub. Instead, download the official release from the website [https://lldpd.github.io/](https://lldpd.github.io/installation.html#install-from-source). Unpack into a working directory.
 
-    ./build/tools/make-standalone-toolchain.sh \
-        --platform=android-9 \
-        --arch=arm \
-        --install-dir=../android-toolchain
-    export TOOLCHAIN=$PWD/../android-toolchain
+2. Download the [Android NDK](https://developer.android.com/ndk/downloads#stable-downloads) (version 22 or later). Unpack into a working directory next to the `lldpd` directory.
 
-Then, you can build `lldpd` with the following commands:
+3. Install `automake`, `libtool`, and `pkg-config`. (`sudo apt-get install automake libtool pkg-config`)
 
-    mkdir build && cd build
-    export PATH=$PATH:$TOOLCHAIN/bin
-    ../configure \
-        --host=arm-linux-androideabi \
-        --with-sysroot=$TOOLCHAIN/sysroot \
-        --prefix=/system \
-        --sbindir=/system/bin \
-        --runstatedir=/data/data/lldpd \
-        --with-privsep-user=root \
-        --with-privsep-group=root
-    make
-    make install DESTDIR=$PWD/install
+4. In the root of the `lldpd` directory, make a `compile.sh` file containing this script:
 
-Then, copy `install/system/bin/*` to `/system/bin` on the target
-system and `install/system/lib/*.so*` to `/system/lib` on the target
-system. You may need to create `/data/data/lldpd` as well.
+```sh
+export TOOLCHAIN=$PWD/android-ndk/toolchains/llvm/prebuilt/linux-x86_64
+export TARGET=armv7a-linux-androideabi
+export API=30
+# DO NOT TOUCH BELOW
+export AR=$TOOLCHAIN/bin/llvm-ar
+export CC=$TOOLCHAIN/bin/$TARGET$API-clang
+export CXX=$TOOLCHAIN/bin/$TARGET$API-clang++
+export LD=$TOOLCHAIN/bin/ld
+export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+export STRIP=$TOOLCHAIN/bin/llvm-strip
+export AS=$CC
+./autogen.sh
+mkdir -p build && cd build
+../configure \
+    --host=$TARGET \
+    --with-sysroot=$TOOLCHAIN/sysroot \
+    --prefix=/system \
+    --sbindir=/system/bin \
+    --runstatedir=/data/data/lldpd \
+    --with-privsep-user=root \
+    --with-privsep-group=root \
+    PKG_CONFIG=/bin/false
+make
+make install DESTDIR=$PWD/install
+```
 
-[Android NDK]: http://developer.android.com/tools/sdk/ndk/index.html
+5. In the **Android NDK** directory, locate the `toolchains/llvm/prebuilt/linux-x86_64` directory and change the `TOOLCHAIN` variable of the above script to match the path where the `linux-x86_64` directory resides.
 
-Usage
------
+```sh
+export TOOLCHAIN=$PWD/android-ndk-r22b-linux-x86_64/android-ndk-r22b/toolchains/llvm/prebuilt/linux-x86_64
+```
+
+6. Determine the CPU architecture target (`adb shell getprop ro.product.cpu.abi`). Change the `TARGET` variable in the above script to match the target architecture. The target name will not exactly match the output of the `adb` command as there will be a trailing suffix to the target name, so look in the `linux-x86_64/bin` directory for the `clang` file that starts with the CPU architecture target. Don't include the API version in the target name.
+```sh
+$ adb shell getprop ro.product.cpu.abi
+armeabi-v7a
+```
+```sh
+linux-x86_64/bin$ ls *-clang
+aarch64-linux-android21-clang     armv7a-linux-androideabi23-clang  i686-linux-android26-clang
+aarch64-linux-android22-clang     armv7a-linux-androideabi24-clang  i686-linux-android27-clang
+aarch64-linux-android23-clang     armv7a-linux-androideabi26-clang  i686-linux-android28-clang
+aarch64-linux-android24-clang     armv7a-linux-androideabi27-clang  i686-linux-android29-clang
+aarch64-linux-android26-clang     armv7a-linux-androideabi28-clang  i686-linux-android30-clang
+aarch64-linux-android27-clang     armv7a-linux-androideabi29-clang  x86_64-linux-android21-clang
+aarch64-linux-android28-clang     armv7a-linux-androideabi30-clang  x86_64-linux-android22-clang
+aarch64-linux-android29-clang     i686-linux-android16-clang        x86_64-linux-android23-clang
+aarch64-linux-android30-clang     i686-linux-android17-clang        x86_64-linux-android24-clang
+armv7a-linux-androideabi16-clang  i686-linux-android18-clang        x86_64-linux-android26-clang
+armv7a-linux-androideabi17-clang  i686-linux-android19-clang        x86_64-linux-android27-clang
+armv7a-linux-androideabi18-clang  i686-linux-android21-clang        x86_64-linux-android28-clang
+armv7a-linux-androideabi19-clang  i686-linux-android22-clang        x86_64-linux-android29-clang
+armv7a-linux-androideabi21-clang  i686-linux-android23-clang        x86_64-linux-android30-clang
+armv7a-linux-androideabi22-clang  i686-linux-android24-clang
+```
+```sh
+export TARGET=armv7a-linux-androideabi
+```
+
+7. Set the `API` variable in the script above to your target API version. Check in the same `linux-x86_64/bin` to ensure the API you are targeting has a supported `clang` file for that CPU architecture and version. As of this writing, there is support for API `21-30` included for all architectures and some CPU architectures supported back to version `16`.
+```sh
+export API=30
+```
+
+8. Run the compile script (`./compile.sh`).
+
+9. Copy the `./bin/*` and `./lib/*.so` files from `lldpd/build/install/system` to the target system (`./bin/*` to `/system/bin`, `./lib/*.so` to `/system/lib64`):
+```sh
+# Push files to target
+cd build/install/system
+adb shell mkdir -p /sdcard/Download/lldpd/bin
+adb push bin/lldpcli /sdcard/Download/lldpd/bin/lldpcli
+adb push bin/lldpd /sdcard/Download/lldpd/bin/lldpd
+adb shell mkdir -p /sdcard/Download/lldpd/lib64
+adb push lib/liblldpctl.so /sdcard/Download/lldpd/lib64/liblldpctl.so
+
+# Enter target shell and move files
+adb shell
+
+# Run as root for all commands
+su
+# Make /system writeable
+mount -o rw,remount /system
+mv /sdcard/Download/lldpd/bin/lldpcli /system/bin/lldpcli
+chmod 755 /system/bin/lldpcli
+chown root:shell /system/bin/lldpcli
+mv /sdcard/Download/lldpd/bin/lldpd /system/bin/lldpd
+chmod 755 /system/bin/lldpd
+chown root:shell /system/bin/lldpd
+chmod 755 /system/bin/lldpctl
+chown root:shell /system/bin/lldpctl
+mv /sdcard/Download/lldpd/lib64/liblldpctl.so /system/lib64/liblldpctl.so
+chmod 644 /system/lib64/liblldpctl.so
+chown root:root /system/lib64/liblldpctl.so
+# Make /system readonly again
+mount -o ro,remount /system
+# Might not be necessary on some systems
+mkdir /data/data/lldpd
+chmod 700 /data/data/lldpd
+chown shell:shell /data/data/lldpd
+# Clean up
+rm -rf /sdcard/Download/lldpd
+```
+
+## Usage
 
 lldpd also implements CDP (Cisco Discovery Protocol), FDP (Foundry
 Discovery Protocol), SONMP (Nortel Discovery Protocol) and EDP
@@ -159,15 +257,13 @@ can be queried with `lldpcli` or through SNMP.
 More information:
  * http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol
  * http://standards.ieee.org/getieee802/download/802.1AB-2005.pdf
- * http://wiki.wireshark.org/LinkLayerDiscoveryProtocol
+ * https://gitlab.com/wireshark/wireshark/-/wikis/LinkLayerDiscoveryProtocol
 
-Compatibility with older kernels
---------------------------------
+## Compatibility with older kernels
 
-If you have a kernel older than Linux 2.6.39, you need to compile
-lldpd with `--enable-oldies` to enable some compatibility functions:
-otherwise, lldpd will only rely on Netlink to receive bridge, bond and
-VLAN information.
+If you have a kernel older than Linux 4.0, you need to compile lldpd with
+`--enable-oldies` to enable some compatibility functions: otherwise, lldpd will
+only rely on Netlink to receive wireless, bridge, bond and VLAN information.
 
 For bonding, you need 2.6.24 (in previous version, PACKET_ORIGDEV
 affected only non multicast packets). See:
@@ -212,15 +308,15 @@ native VLAN and if your network card support accelerated VLAN, you
 need to subscribe to this VLAN as well. The Linux kernel does not
 provide any interface for this. The easiest way is to create the VLAN
 for each port:
-
-    ip link add link eth0 name eth0.1 type vlan id 1
-    ip link set up dev eth0.1
-
+```sh
+ip link add link eth0 name eth0.1 type vlan id 1
+ip link set up dev eth0.1
+```
 You can check both cases using tcpdump:
-
-    tcpdump -epni eth0 ether host 01:80:c2:00:00:0e
-    tcpdump -eni eth0 ether host 01:80:c2:00:00:0e
-
+```sh
+tcpdump -epni eth0 ether host 01:80:c2:00:00:0e
+tcpdump -eni eth0 ether host 01:80:c2:00:00:0e
+```
 If the first command does not display received LLDP packets but the
 second one does, LLDP packets are likely encapsulated into a VLAN:
 
@@ -240,51 +336,86 @@ using the option `configure system interface promiscuous`.
 
 On modern networks, the performance impact should be nonexistent.
 
-Development
------------
+## Development
 
 During development, you may want to execute lldpd at its current
 location instead of doing `make install`. The correct way to do this is
 to issue the following command:
-
-    sudo libtool execute src/daemon/lldpd -L $PWD/src/client/lldpcli -d
-
+```sh
+sudo libtool execute src/daemon/lldpd -L $PWD/src/client/lldpcli -d
+```
 You can append any further arguments. If lldpd is unable to find
 `lldpcli` it will start in an unconfigured mode and won't send or
 accept LLDP frames.
 
-You can use [afl](http://lcamtuf.coredump.cx/afl/) to test some
-aspects of lldpd. To test frame decoding, you can do something like
-that:
-
-    export AFL_USE_ASAN=1 # only on 32bit arch
-    ./configure CC=afl-gcc
-    make clean check
-    cd tests
-    mkdir inputs
-    mv *.pcap inputs
-    afl-fuzz -i inputs -o outputs ./decode @@
-
 There is a general test suite with `make check`. It's also possible to
-run integration tests. They need [py.test](http://pytest.org/latest/)
+run integration tests. They need [pytest](http://pytest.org/latest/)
 and rely on Linux containers to be executed.
 
 To enable code coverage, use:
+```sh
+../configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+             --enable-sanitizers --enable-gcov --with-snmp \
+             CFLAGS="-O0 -g"
+make
+make check
+# maybe, run integration tests
+lcov --base-directory $PWD/src/lib \
+     --directory src --capture --output-file gcov.info
+genhtml gcov.info --output-directory coverage
+```
+## Fuzzing
 
-    ../configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
-                 --enable-sanitizers --enable-gcov --with-snmp \
-                 CFLAGS="-O0 -g"
-    make
-    make check
-    # maybe, run integration tests
-    lcov --base-directory $PWD/src/lib \
-         --directory src --capture --output-file gcov.info
-    genhtml gcov.info --output-directory coverage
+### With [libfuzzer](https://llvm.org/docs/LibFuzzer.html)
 
-Embedding
----------
+Using address sanitizer:
+```bash
+export CC=clang
+export CFLAGS="-O1 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address -fsanitize-address-use-after-scope -fsanitize=fuzzer-no-link"
+export LIB_FUZZING_ENGINE="-fsanitize=fuzzer"
+```
 
-To embed lldpd into an existing system, there are two point of entries:
+Using undefined-behaviour sanitizer:
+```bash
+export CC=clang
+export CFLAGS="-O1 -fno-omit-frame-pointer -gline-tables-only -fsanitize=array-bounds,bool,builtin,enum,float-divide-by-zero,function,integer-divide-by-zero,null,object-size,return,returns-nonnull-attribute,shift,signed-integer-overflow,unsigned-integer-overflow,unreachable,vla-bound,vptr -fno-sanitize-recover=array-bounds,bool,builtin,enum,float-divide-by-zero,function,integer-divide-by-zero,null,object-size,return,returns-nonnull-attribute,shift,signed-integer-overflow,unreachable,vla-bound,vptr -fsanitize=fuzzer-no-link"
+export LIB_FUZZING_ENGINE="-fsanitize=fuzzer"
+```
+
+Using memory sanitizer:
+```bash
+export CC=clang
+export CFLAGS="-O1 -fno-omit-frame-pointer -gline-tables-only -fsanitize=memory -fsanitize-memory-track-origins -fsanitize=fuzzer-no-link"
+export LIB_FUZZING_ENGINE="-fsanitize=fuzzer"
+```
+
+Build and run:
+```sh
+./configure --disable-shared --enable-pie --enable-fuzzer=$LIB_FUZZING_ENGINE
+make
+cd tests/
+./fuzz_cdp   fuzzing_seed_corpus/fuzz_cdp_seed_corpus
+./fuzz_edp   fuzzing_seed_corpus/fuzz_edp_seed_corpus
+./fuzz_lldp  fuzzing_seed_corpus/fuzz_lldp_seed_corpus
+./fuzz_sonmp fuzzing_seed_corpus/fuzz_sonmp_seed_corpus
+```
+
+### With [AFL++](https://aflplus.plus)
+
+You can use AFL++ to test some other aspects of lldpd. To test frame decoding:
+```bash
+export CC=afl-clang-fast
+./configure --disable-shared --enable-pie
+make clean check
+cd tests
+mkdir inputs
+mv *.pcap inputs
+afl-fuzz -i inputs -o outputs ./decode @@
+```
+
+## Embedding
+
+To embed lldpd into an existing system, there are two points of entry:
 
  1. If your system does not use standard Linux interface, you can
     support additional interfaces by implementing the appropriate
@@ -303,24 +434,32 @@ To embed lldpd into an existing system, there are two point of entries:
     should always be shipped with `lldpd`. On the other hand, programs
     using `liblldpctl.so` can rely on the classic ABI rules.
 
-Troubleshooting
----------------
+## Troubleshooting
 
-You can use `tcpdump` to look after the packets received and send by
-`lldpd`. To look after LLDPU, use:
-
-    tcpdump -s0 -vv -pni eth0 ether dst 01:80:c2:00:00:0e
-
+You can use `tcpdump` to capture the packets received and sent by
+`lldpd`. To capture LLDPU, use:
+```sh
+tcpdump -s0 -vv -pni eth0 ether dst 01:80:c2:00:00:0e
+```
 Intel X710 cards may handle LLDP themselves, intercepting any incoming
 packets. If you don't see anything through `tcpdump`, check if you
 have such a card (with `lspci`) and stop the embedded LLDP daemon:
+```sh
+for f in /sys/kernel/debug/i40e/*/command; do
+    echo lldp stop > $f
+done
+```
+On FreeBSD, use `sysctl` stop the embedded LLDP daemon:
+```sh
+for oid in $(sysctl -Nq dev.ixl | grep fw_lldp); do
+    sysctl $oid=0
+done
+```
+This may also apply to the `ice` (Intel E8xx cards) driver. These
+steps are not necessary with a recent version of `lldpd` (1.0.11+ for
+Linux, 1.0.19+ for FreeBSD).
 
-    for f in /sys/kernel/debug/i40e/*/command; do
-        echo lldp stop > $f
-    done
-
-License
--------
+## License
 
 lldpd is distributed under the ISC license:
 

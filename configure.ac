@@ -5,23 +5,23 @@
 ### Base configuration
 
 # Configure autoconf
-AC_PREREQ([2.64])
+AC_PREREQ([2.69])
 
 AC_INIT([lldpd],
         [m4_esyscmd_s([./get-version])],
-        [https://github.com/vincentbernat/lldpd/issues],
+        [https://github.com/lldpd/lldpd/issues],
         [lldpd],
-        [http://vincentbernat.github.io/lldpd/])
+        [https://lldpd.github.io/])
 
 AC_CONFIG_SRCDIR([src/log.c])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/compat/Makefile
                  src/daemon/Makefile
-		 src/lib/Makefile
+                 src/lib/Makefile
                  src/client/Makefile
-	         tests/Makefile
+                 tests/Makefile
                  osx/Makefile])
 AC_CONFIG_MACRO_DIR([m4])
 AC_SUBST([CONFIGURE_ARGS], [$ac_configure_args])
@@ -48,11 +48,17 @@ AC_PROG_CC_C99
 if test x"$ac_cv_prog_cc_c99" = x"no"; then
   AC_MSG_FAILURE([*** C99 support is mandatory])
 fi
+AC_PROG_CPP
 AM_PROG_CC_C_O
-AC_PROG_LIBTOOL
+LT_INIT
 AC_PROG_LN_S
 AC_PROG_EGREP
 AC_PROG_AWK
+AC_PROG_SED
+
+# Check for pkg-config
+m4_ifndef([PKG_CHECK_MODULES], [
+  AC_MSG_ERROR([PKG_CHECK_MODULES not found. Please install pkg-config and re-run autogen.sh])])
 
 # Doxygen
 DX_HTML_FEATURE(ON)
@@ -70,19 +76,22 @@ DX_INIT_DOXYGEN([lldpd], [doxygen.cfg], [doxygen])
 AX_CFLAGS_GCC_OPTION([-Wunknown-warning-option], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-fdiagnostics-show-option], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-fdiagnostics-color=auto], [LLDP_CFLAGS])
+AX_CFLAGS_GCC_OPTION([-fno-omit-frame-pointer], [LLDP_CFLAGS])
+AX_CFLAGS_GCC_OPTION([-funsigned-char], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-pipe], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wall], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-W], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wextra], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wformat], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wformat-security], [LLDP_CFLAGS])
+AX_CFLAGS_GCC_OPTION([-Wimplicit-fallthrough], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wfatal-errors], [LLDP_CFLAGS])
-AX_CFLAGS_GCC_OPTION([-Wcast-align], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wheader-guard], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wdocumentation], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Winline], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wpointer-arith], [LLDP_CFLAGS])
-AX_CFLAGS_GCC_OPTION([-fno-omit-frame-pointer], [LLDP_CFLAGS])
+AX_CFLAGS_GCC_OPTION([-Wmissing-prototypes], [LLDP_CFLAGS])
+AX_CFLAGS_GCC_OPTION([-Wno-cast-align], [LLDP_CFLAGS]) dnl clang is bad at this
 AX_CFLAGS_GCC_OPTION([-Wno-unused-parameter], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wno-missing-field-initializers], [LLDP_CFLAGS])
 AX_CFLAGS_GCC_OPTION([-Wno-sign-compare], [LLDP_CFLAGS]) dnl Should be fixed later
@@ -108,6 +117,7 @@ if test x"$hardening" != x"no"; then
   AX_CFLAGS_GCC_OPTION([-fstack-protector-all], [LLDP_CFLAGS])
   AX_CFLAGS_GCC_OPTION([-fstack-protector-strong], [LLDP_CFLAGS])
   AX_CFLAGS_GCC_OPTION([-fstack-protector-strong], [LLDP_CFLAGS])
+  AX_CFLAGS_GCC_OPTION([-fstack-clash-protection], [LLDP_CFLAGS])
   AX_CFLAGS_GCC_OPTION([-D_FORTIFY_SOURCE=2], [LLDP_CPPFLAGS])
 fi
 if test x"$pie" = x"yes"; then
@@ -135,6 +145,22 @@ elif test x"$hardening" != x"no"; then
   if test x"$ax_cv_ld_check_flag__fsanitize_safe_stack" != x"no"; then
     AX_CFLAGS_GCC_OPTION([-fsanitize=safe-stack], [LLDP_CFLAGS])
   fi
+fi
+  ])
+
+# Fuzzer
+AC_ARG_ENABLE([fuzzer],
+  AS_HELP_STRING([--enable-fuzzer],
+    [Enable fuzzing @<:@default=no@:>@]),
+  [
+case "$enableval" in
+    no) fuzzer= ;;
+    yes) fuzzer="-fsanitize=fuzzer" ;;
+    *) fuzzer="$enableval" ;;
+esac
+if test x"$fuzzer" != x; then
+  AC_SUBST([FUZZ_DECODE_ENGINE], ["$fuzzer"])
+  AX_CFLAGS_GCC_OPTION([-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION], [LLDP_CFLAGS])
 fi
   ])
 
@@ -186,11 +212,10 @@ if test x"$with_libbsd" != x"no"; then
     CFLAGS="$CFLAGS $libbsd_CFLAGS"
     LIBS="$LIBS $libbsd_LIBS"
     AC_MSG_CHECKING([if libbsd can be linked correctly])
-    AC_TRY_LINK([
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
   @%:@include <sys/time.h>
   @%:@include <sys/types.h>
-  ],[],
-      [
+  ]], [[]])],[
         AC_MSG_RESULT(yes)
         LLDP_CFLAGS="$LLDP_CFLAGS $libbsd_CFLAGS"
         LLDP_LDFLAGS="$LLDP_LDFLAGS $libbsd_LIBS"
@@ -265,7 +290,7 @@ AC_ARG_WITH([readline],
   [],
   [with_readline=auto])
 if test x"$with_readline" != x"no"; then
-   AX_LIB_READLINE
+   AX_LIB_READLINE_LLDPD
    if test x"$with_readline" != x"check" -a x"$with_readline" != x"auto"; then
      if test x"$ax_cv_lib_readline" = x"no"; then
        AC_MSG_FAILURE([*** no readline support found])
@@ -380,8 +405,16 @@ fi
 
 AX_BUILD_DATE_EPOCH(BUILD_DATE, "%FT%TZ", [BUILD_DATE="(unknown)"])
 AC_DEFINE_UNQUOTED(BUILD_DATE, "[$BUILD_DATE]", [Build date and time])
+
+dnl per reproducible-builds.org check SOURCE_DATE_EPOCH
+dnl
+if test -z "${SOURCE_DATE_EPOCH+set}" ; then
 AC_DEFINE_UNQUOTED(LLDP_CC, "[$CC $LLDP_CFLAGS $LLDP_CPPFLAGS $CFLAGS $CPPFLAGS]", [C compiler command])
 AC_DEFINE_UNQUOTED(LLDP_LD, "[$LD $LLDP_LDFLAGS $LLDP_BIN_LDFLAGS $LDFLAGS $LIBS]", [Linker compiler command])
+else
+AC_DEFINE_UNQUOTED(LLDP_CC, "[C compiler command is not available for reproducible builds]", [C compiler command])
+AC_DEFINE_UNQUOTED(LLDP_LD, "[Linker compiler command is not available for reproducible builds]", [Linker compiler command])
+fi
 
 #######################
 # Output results
@@ -389,6 +422,7 @@ AC_SUBST([LLDP_CFLAGS])
 AC_SUBST([LLDP_CPPFLAGS])
 AC_SUBST([LLDP_LDFLAGS])
 AC_SUBST([LLDP_BIN_LDFLAGS])
+AM_CONDITIONAL([ENABLE_FUZZ_DECODE], [test x"$fuzzer" != x])
 AM_CONDITIONAL([HAVE_CHECK], [test x"$have_check" = x"yes"])
 AM_CONDITIONAL([USE_SNMP], [test x"$with_snmp" = x"yes"])
 AM_CONDITIONAL([USE_XML], [test x"$with_xml" = x"yes"])

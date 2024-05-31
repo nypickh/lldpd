@@ -74,10 +74,6 @@ Comment:
  It is believed that header files are an interface for user space and
  therefore cannot be covered by copyright.
 
-Files: include/netinet/if_ether.h include/sys/queue.h
-Copyright: Copyright (c) 1982, 1986, 1993 The Regents of the University of California
-License: BSD-3-clause
-
 Files: include/osx/*
 Copyright: Copyright (c) 2003-2010 Apple Computer, Inc
 License: APSL-2

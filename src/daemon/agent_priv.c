@@ -27,47 +27,57 @@
 #include <poll.h>
 
 #ifdef ENABLE_PRIVSEP
-#include <net-snmp/net-snmp-config.h>
-#include <net-snmp/net-snmp-includes.h>
-#include <net-snmp/agent/net-snmp-agent-includes.h>
-#include <net-snmp/agent/snmp_vars.h>
-#include <net-snmp/library/snmpUnixDomain.h>
+#  include <net-snmp/net-snmp-config.h>
+#  include <net-snmp/net-snmp-includes.h>
+#  include <net-snmp/agent/net-snmp-agent-includes.h>
+#  include <net-snmp/agent/snmp_vars.h>
+#  include <net-snmp/library/snmpUnixDomain.h>
+
+#  ifdef ASN_PRIV_STOP
+/* NetSNMP 5.8+ */
+#    define F_SEND_SIGNATURE \
+      netsnmp_transport *t, const void *buf, int size, void **opaque, int *olength
+#    define F_FMTADDR_SIGNATURE netsnmp_transport *t, const void *data, int len
+#    define F_FROM_OSTRING_SIGNATURE const void *o, size_t o_len, int local
+#  else
+#    define F_SEND_SIGNATURE \
+      netsnmp_transport *t, void *buf, int size, void **opaque, int *olength
+#    define F_FMTADDR_SIGNATURE netsnmp_transport *t, void *data, int len
+#    define F_FROM_OSTRING_SIGNATURE const u_char *o, size_t o_len, int local
+#  endif
 
 static oid netsnmp_unix[] = { TRANSPORT_DOMAIN_LOCAL };
 static netsnmp_tdomain unixDomain;
 
 static char *
-agent_priv_unix_fmtaddr(netsnmp_transport *t, void *data, int len)
+agent_priv_unix_fmtaddr(F_FMTADDR_SIGNATURE)
 {
 	/* We don't bother to implement the full function */
 	return strdup("Local Unix socket with privilege separation: unknown");
 }
 
 static int
-agent_priv_unix_recv(netsnmp_transport *t, void *buf, int size,
-    void **opaque, int *olength)
+agent_priv_unix_recv(netsnmp_transport *t, void *buf, int size, void **opaque,
+    int *olength)
 {
 	int rc = -1;
-	socklen_t  tolen = sizeof(struct sockaddr_un);
+	socklen_t tolen = sizeof(struct sockaddr_un);
 	struct sockaddr *to = NULL;
 
-	if (t == NULL || t->sock < 0)
-		goto recv_error;
+	if (t == NULL || t->sock < 0) goto recv_error;
 	to = (struct sockaddr *)calloc(1, sizeof(struct sockaddr_un));
-	if (to == NULL)
-		goto recv_error;
-	if (getsockname(t->sock, to, &tolen) != 0)
-		goto recv_error;
+	if (to == NULL) goto recv_error;
+	if (getsockname(t->sock, to, &tolen) != 0) goto recv_error;
 	while (rc < 0) {
 		rc = recv(t->sock, buf, size, 0);
-		/* TODO: handle the (unlikely) case where we get EAGAIN or EWOULDBLOCK */
+		/* TODO: handle the (unlikely) case where we get EAGAIN or EWOULDBLOCK
+		 */
 		if (rc < 0 && errno != EINTR) {
-			log_warn("snmp", "unable to receive from fd %d",
-			    t->sock);
+			log_warn("snmp", "unable to receive from fd %d", t->sock);
 			goto recv_error;
 		}
 	}
-	*opaque = (void*)to;
+	*opaque = (void *)to;
 	*olength = sizeof(struct sockaddr_un);
 	return rc;
 
@@ -78,18 +88,15 @@ recv_error:
 	return -1;
 }
 
-#define AGENT_WRITE_TIMEOUT 2000
+#  define AGENT_WRITE_TIMEOUT 2000
 static int
-agent_priv_unix_send(netsnmp_transport *t, void *buf, int size,
-    void **opaque, int *olength)
+agent_priv_unix_send(F_SEND_SIGNATURE)
 {
 	int rc = -1;
 
 	if (t != NULL && t->sock >= 0) {
-		struct pollfd sagentx = {
-			.fd = t->sock,
-			.events = POLLOUT | POLLERR | POLLHUP
-		};
+		struct pollfd sagentx = { .fd = t->sock,
+			.events = POLLOUT | POLLERR | POLLHUP };
 		while (rc < 0) {
 			rc = poll(&sagentx, 1, AGENT_WRITE_TIMEOUT);
 			if (rc == 0) {
@@ -102,8 +109,7 @@ agent_priv_unix_send(netsnmp_transport *t, void *buf, int size,
 				/* We can either write or have an error somewhere */
 				rc = send(t->sock, buf, size, 0);
 				if (rc < 0) {
-					if (errno == EAGAIN ||
-					    errno == EWOULDBLOCK ||
+					if (errno == EAGAIN || errno == EWOULDBLOCK ||
 					    errno == EINTR)
 						/* Let's retry */
 						continue;
@@ -147,30 +153,26 @@ agent_priv_unix_accept(netsnmp_transport *t)
 static netsnmp_transport *
 agent_priv_unix_transport(const char *string, int len, int local)
 {
-	struct sockaddr_un addr = {
-		.sun_family = AF_UNIX
-	};
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
 	netsnmp_transport *t = NULL;
 
 	if (local) {
 		log_warnx("snmp", "should not have been called for local transport");
 		return NULL;
 	}
-	if (!string)
-		return NULL;
+	if (!string) return NULL;
 	if (len >= sizeof(addr.sun_path) ||
-	    strlcpy(addr.sun_path, string, sizeof(addr.sun_path)) >= sizeof(addr.sun_path)) {
+	    strlcpy(addr.sun_path, string, sizeof(addr.sun_path)) >=
+		sizeof(addr.sun_path)) {
 		log_warnx("snmp", "path too long for Unix domain transport");
 		return NULL;
 	}
 
-	if ((t = (netsnmp_transport *)
-		calloc(1, sizeof(netsnmp_transport))) == NULL)
+	if ((t = (netsnmp_transport *)calloc(1, sizeof(netsnmp_transport))) == NULL)
 		return NULL;
 
 	t->domain = netsnmp_unix;
-	t->domain_length =
-	    sizeof(netsnmp_unix) / sizeof(netsnmp_unix[0]);
+	t->domain_length = sizeof(netsnmp_unix) / sizeof(netsnmp_unix[0]);
 
 	if ((t->sock = priv_snmp_socket(&addr)) < 0) {
 		netsnmp_transport_free(t);
@@ -179,8 +181,7 @@ agent_priv_unix_transport(const char *string, int len, int local)
 
 	t->flags = NETSNMP_TRANSPORT_FLAG_STREAM;
 
-	if ((t->remote = (u_char *)
-		calloc(1, strlen(addr.sun_path) + 1)) == NULL) {
+	if ((t->remote = (u_char *)calloc(1, strlen(addr.sun_path) + 1)) == NULL) {
 		agent_priv_unix_close(t);
 		netsnmp_transport_free(t);
 		return NULL;
@@ -189,43 +190,39 @@ agent_priv_unix_transport(const char *string, int len, int local)
 	t->remote_length = strlen(addr.sun_path);
 
 	t->msgMaxSize = 0x7fffffff;
-	t->f_recv     = agent_priv_unix_recv;
-	t->f_send     = agent_priv_unix_send;
-	t->f_close    = agent_priv_unix_close;
-	t->f_accept   = agent_priv_unix_accept;
-	t->f_fmtaddr  = agent_priv_unix_fmtaddr;
+	t->f_recv = agent_priv_unix_recv;
+	t->f_send = agent_priv_unix_send;
+	t->f_close = agent_priv_unix_close;
+	t->f_accept = agent_priv_unix_accept;
+	t->f_fmtaddr = agent_priv_unix_fmtaddr;
 
 	return t;
 }
 
-netsnmp_transport *
-#if !HAVE_NETSNMP_TDOMAIN_F_CREATE_FROM_TSTRING_NEW
-agent_priv_unix_create_tstring(const char *string, int local)
-#else
-agent_priv_unix_create_tstring(const char *string, int local, const char *default_target)
-#endif
+#  if HAVE_NETSNMP_TDOMAIN_F_CREATE_FROM_TSTRING_NEW
+static netsnmp_transport *
+agent_priv_unix_create_tstring_new(const char *string, int local,
+    const char *default_target)
 {
-#if HAVE_NETSNMP_TDOMAIN_F_CREATE_FROM_TSTRING_NEW
-	if ((!string || *string == '\0') && default_target &&
-	    *default_target != '\0') {
+	if ((!string || *string == '\0') && default_target && *default_target != '\0') {
 		string = default_target;
 	}
-#endif
-	if (!string)
-		return NULL;
+	if (!string) return NULL;
 	return agent_priv_unix_transport(string, strlen(string), local);
 }
+#  else
+static netsnmp_transport *
+agent_priv_unix_create_tstring(const char *string, int local)
+{
+	if (!string) return NULL;
+	return agent_priv_unix_transport(string, strlen(string), local);
+}
+#  endif
 
 static netsnmp_transport *
-agent_priv_unix_create_ostring(const u_char * o, size_t o_len, int local)
+agent_priv_unix_create_ostring(F_FROM_OSTRING_SIGNATURE)
 {
 	return agent_priv_unix_transport((char *)o, o_len, local);
-}
-
-const char *
-agent_default_agentx_socket()
-{
-	return NETSNMP_AGENTX_SOCKET;
 }
 
 void
@@ -233,13 +230,13 @@ agent_priv_register_domain()
 {
 	unixDomain.name = netsnmp_unix;
 	unixDomain.name_length = sizeof(netsnmp_unix) / sizeof(oid);
-	unixDomain.prefix = (const char**)calloc(2, sizeof(char *));
+	unixDomain.prefix = (const char **)calloc(2, sizeof(char *));
 	unixDomain.prefix[0] = "unix";
-#if !HAVE_NETSNMP_TDOMAIN_F_CREATE_FROM_TSTRING_NEW
+#  if HAVE_NETSNMP_TDOMAIN_F_CREATE_FROM_TSTRING_NEW
+	unixDomain.f_create_from_tstring_new = agent_priv_unix_create_tstring_new;
+#  else
 	unixDomain.f_create_from_tstring = agent_priv_unix_create_tstring;
-#else
-	unixDomain.f_create_from_tstring_new = agent_priv_unix_create_tstring;
-#endif
+#  endif
 	unixDomain.f_create_from_ostring = agent_priv_unix_create_ostring;
 	netsnmp_tdomain_register(&unixDomain);
 }

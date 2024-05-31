@@ -26,20 +26,21 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include "log.h"
 
 /* By default, logging is done on stderr. */
-static int	 use_syslog = 0;
+static int use_syslog = 0;
 /* Default debug level */
-static int	 debug = 0;
+static int debug = 0;
 
 /* Logging can be modified by providing an appropriate log handler. */
 static void (*logh)(int severity, const char *msg) = NULL;
 
-static void	 vlog(int, const char *, const char *, va_list);
-static void	 logit(int, const char *, const char *, ...);
+static void vlog(int, const char *, const char *, va_list);
+static void logit(int, const char *, const char *, ...);
 
 #define MAX_DBG_TOKENS 40
-static const char *tokens[MAX_DBG_TOKENS + 1] = {NULL};
+static const char *tokens[MAX_DBG_TOKENS + 1] = { NULL };
 
 void
 log_init(int n_syslog, int n_debug, const char *progname)
@@ -47,8 +48,7 @@ log_init(int n_syslog, int n_debug, const char *progname)
 	use_syslog = n_syslog;
 	debug = n_debug;
 
-	if (use_syslog)
-		openlog(progname, LOG_PID | LOG_NDELAY, LOG_DAEMON);
+	if (use_syslog) openlog(progname, LOG_PID | LOG_NDELAY, LOG_DAEMON);
 
 	tzset();
 }
@@ -56,12 +56,11 @@ log_init(int n_syslog, int n_debug, const char *progname)
 void
 log_level(int n_debug)
 {
-	if (n_debug >= 0)
-		debug = n_debug;
+	if (n_debug >= 0) debug = n_debug;
 }
 
 void
-log_register(void (*cb)(int, const char*))
+log_register(void (*cb)(int, const char *))
 {
 	logh = cb;
 }
@@ -72,7 +71,7 @@ log_accept(const char *token)
 	int i;
 	for (i = 0; i < MAX_DBG_TOKENS; i++) {
 		if (tokens[i] == NULL) {
-			tokens[i+1] = NULL;
+			tokens[i + 1] = NULL;
 			tokens[i] = token;
 			return;
 		}
@@ -82,7 +81,7 @@ log_accept(const char *token)
 static void
 logit(int pri, const char *token, const char *fmt, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	va_start(ap, fmt);
 	vlog(pri, token, fmt, ap);
@@ -103,31 +102,48 @@ date()
 static const char *
 translate(int fd, int priority)
 {
-	/* Translate a syslog priority to a string. With colors if the output is a terminal. */
+	/* Translate a syslog priority to a string. With colors if the output is a
+	 * terminal. */
 	int tty = isatty(fd);
 	switch (tty) {
 	case 1:
 		switch (priority) {
-		case LOG_EMERG:   return "\033[1;37;41m[EMRG";
-		case LOG_ALERT:   return "\033[1;37;41m[ALRT";
-		case LOG_CRIT:    return "\033[1;37;41m[CRIT";
-		case LOG_ERR:     return "\033[1;31m[ ERR";
-		case LOG_WARNING: return "\033[1;33m[WARN";
-		case LOG_NOTICE:  return "\033[1;34m[NOTI";
-		case LOG_INFO:    return "\033[1;34m[INFO";
-		case LOG_DEBUG:   return "\033[1;30m[ DBG";
+		case LOG_EMERG:
+			return "\033[1;37;41m[EMRG";
+		case LOG_ALERT:
+			return "\033[1;37;41m[ALRT";
+		case LOG_CRIT:
+			return "\033[1;37;41m[CRIT";
+		case LOG_ERR:
+			return "\033[1;31m[ ERR";
+		case LOG_WARNING:
+			return "\033[1;33m[WARN";
+		case LOG_NOTICE:
+			return "\033[1;34m[NOTI";
+		case LOG_INFO:
+			return "\033[1;34m[INFO";
+		case LOG_DEBUG:
+			return "\033[36m[ DBG";
 		}
 		break;
 	default:
 		switch (priority) {
-		case LOG_EMERG:   return "[EMRG";
-		case LOG_ALERT:   return "[ALRT";
-		case LOG_CRIT:    return "[CRIT";
-		case LOG_ERR:     return "[ ERR";
-		case LOG_WARNING: return "[WARN";
-		case LOG_NOTICE:  return "[NOTI";
-		case LOG_INFO:    return "[INFO";
-		case LOG_DEBUG:   return "[ DBG";
+		case LOG_EMERG:
+			return "[EMRG";
+		case LOG_ALERT:
+			return "[ALRT";
+		case LOG_CRIT:
+			return "[CRIT";
+		case LOG_ERR:
+			return "[ ERR";
+		case LOG_WARNING:
+			return "[WARN";
+		case LOG_NOTICE:
+			return "[NOTI";
+		case LOG_INFO:
+			return "[INFO";
+		case LOG_DEBUG:
+			return "[ DBG";
 		}
 	}
 	return "[UNKN]";
@@ -137,7 +153,7 @@ static void
 vlog(int pri, const char *token, const char *fmt, va_list ap)
 {
 	if (logh) {
-		char *result;
+		char *result = NULL;
 		if (vasprintf(&result, fmt, ap) != -1) {
 			logh(pri, result);
 			free(result);
@@ -160,12 +176,9 @@ vlog(int pri, const char *token, const char *fmt, va_list ap)
 	/* Log to standard error in all cases */
 	char *nfmt;
 	/* best effort in out of mem situations */
-	if (asprintf(&nfmt, "%s %s%s%s]%s %s\n",
-		date(),
-		translate(STDERR_FILENO, pri),
+	if (asprintf(&nfmt, "%s %s%s%s]%s %s\n", date(), translate(STDERR_FILENO, pri),
 		token ? "/" : "", token ? token : "",
-		isatty(STDERR_FILENO) ? "\033[0m" : "",
-		fmt) == -1) {
+		isatty(STDERR_FILENO) ? "\033[0m" : "", fmt) == -1) {
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 	} else {
@@ -175,12 +188,11 @@ vlog(int pri, const char *token, const char *fmt, va_list ap)
 	fflush(stderr);
 }
 
-
 void
 log_warn(const char *token, const char *emsg, ...)
 {
-	char	*nfmt;
-	va_list	 ap;
+	char *nfmt = NULL;
+	va_list ap;
 
 	/* best effort to even work in out of memory situations */
 	if (emsg == NULL)
@@ -203,7 +215,7 @@ log_warn(const char *token, const char *emsg, ...)
 void
 log_warnx(const char *token, const char *emsg, ...)
 {
-	va_list	 ap;
+	va_list ap;
 
 	va_start(ap, emsg);
 	vlog(LOG_WARNING, token, emsg, ap);
@@ -213,7 +225,7 @@ log_warnx(const char *token, const char *emsg, ...)
 void
 log_info(const char *token, const char *emsg, ...)
 {
-	va_list	 ap;
+	va_list ap;
 
 	if (use_syslog || debug > 0 || logh) {
 		va_start(ap, emsg);
@@ -227,11 +239,8 @@ log_debug_accept_token(const char *token)
 {
 	int i;
 	if (tokens[0] == NULL) return 1;
-	for (i = 0;
-	     (i < MAX_DBG_TOKENS) && (tokens[i] != NULL);
-	     i++) {
-		if (!strcmp(tokens[i], token))
-			return 1;
+	for (i = 0; (i < MAX_DBG_TOKENS) && (tokens[i] != NULL); i++) {
+		if (!strcmp(tokens[i], token)) return 1;
 	}
 	return 0;
 }
@@ -239,7 +248,7 @@ log_debug_accept_token(const char *token)
 void
 log_debug(const char *token, const char *emsg, ...)
 {
-	va_list	 ap;
+	va_list ap;
 
 	if ((debug > 1 && log_debug_accept_token(token)) || logh) {
 		va_start(ap, emsg);
@@ -253,12 +262,11 @@ fatal(const char *token, const char *emsg)
 {
 	if (emsg == NULL)
 		logit(LOG_CRIT, token ? token : "fatal", "%s", strerror(errno));
+	else if (errno)
+		logit(LOG_CRIT, token ? token : "fatal", "%s: %s", emsg,
+		    strerror(errno));
 	else
-		if (errno)
-			logit(LOG_CRIT, token ? token : "fatal", "%s: %s",
-			    emsg, strerror(errno));
-		else
-			logit(LOG_CRIT, token ? token : "fatal", "%s", emsg);
+		logit(LOG_CRIT, token ? token : "fatal", "%s", emsg);
 
 	exit(1);
 }

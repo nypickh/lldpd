@@ -1,3 +1,135 @@
+lldpd (1.0.19)
+ * Changes:
+   + Support of both Apple Silicon and Intel for macOS package.
+   + Add cvlan/svlan/tpmr capabilities.
+   + Disable LLDP in firmware for Intel X7xx cards on FreeBSD.
+
+lldpd (1.0.18)
+ * Changes (breaking):
+   + Remove support for building 802.3bt TLVs (broken).
+ * Fix:
+   + Fix memory leaks in EDP/FDP decoding when receiving some TLVs twice.
+   + Do not set interface description continuously.
+   + Use a different Netlink socket for changes and queries.
+
+lldpd (1.0.17)
+ * Fix:
+   + Read overflow when parsing CDP addresses. Thanks to Matteo Memelli.
+   + Don't output empty lines on configure commands.
+
+lldpd (1.0.16)
+ * Fix:
+   + Do not use 00:00:00:00:00:00 as chassis ID.
+   + Do not busy loop when an interface with a neighbor disappears.
+
+lldpd (1.0.15)
+ * Changes
+   + Add configure command to override system capabilities. Contributed by
+     Ignacio Sanchez Navarro. (#526)
+   + An unrecognized ORG TLV is now considered as a custom one. (#536)
+ * Fix:
+   + Really don't send VLANs when there are too many (#520)
+   + Ignore temporary IPv6 addresses (#521)
+
+lldpd (1.0.14)
+ * Changes
+   + Add configure commands to alter inventory TLVs (#508)
+ * Fix:
+   + Update seccomp rules for newer kernel/libc (#488)
+   + Correctly handle an interface whose index has changed (#490)
+   + Don't send VLANs when there are too many (#501)
+
+lldpd (1.0.13)
+ * Fix:
+   + Add support for 2.5G, 5G, 25G and 50G based Ethernet (#475)
+   + Fix link-down detection on OpenBSD (#476)
+   + Fix LLDP packets encapsuled in VLAN 0 in some conditions
+   + Fix heap overflow when reading SONMP. CVE-2021-43612.
+     Thanks to Jeremy Galindo for discovering this one.
+
+lldpd (1.0.12)
+  * Fix:
+    + Use a dedicated file lock to prevent concurrent changes from lldpcli.
+    + Require/display powerpairs for Dot3 power even when device type is PD.
+  * Changes:
+    + Provide a Docker image and make it available on GitHub.
+
+lldpd (1.0.11)
+  * Changes:
+    + Disable LLDP in firmware for Intel X7xx cards.
+  * Fix:
+    + Ensure Intel E8xx cards can transmit LLDP packets.
+
+lldpd (1.0.10)
+  * Fix:
+    + Fix chroot directory creation.
+
+lldpd (1.0.9)
+  * Fix:
+    + Do not use interface alias if we set it ourselves.
+    + More memory leak fixes on duplicate TLVs in LLDP, CDP and EDP
+      (related to CVE-2020-27827).
+    + On OSX, handle empty groups correctly when looking for a free UID/GID.
+  * Changes:
+    + Display port status with "show interfaces".
+    + Do not display "age" and "via" when using "show interfaces".
+
+lldpd (1.0.8)
+  * Fix:
+    + Out-of-bound read access when parsing LLDP-MED civic address in
+      liblldpctl for malformed fields.
+    + Fix memory leak when receiving LLDPU with duplicate fields.
+      CVE-2020-27827.
+  * Changes:
+    + Enable "router" capability bit when IPv6 routing is enabled.
+
+lldpd (1.0.7)
+  * Fix:
+    + Do not listen only to LLDP packets on Linux. When an interface
+      is enslaved to an Open vSwitch, incoming packets are missed.
+
+lldpd (1.0.6)
+  * Fix:
+    + Do not loose chassis local information when interface status changes.
+    + Fix SNMP walk on lldpRemTable when missing remote system
+      name or description.
+    + Remove length limitation on system description and platform.
+  * Changes:
+    + Deprecate use of lldpctl_watch_callback(). Use
+      lldpctl_watch_callback2() instead.
+    + Upgrade embedded libevent to 2.1.11-stable
+    + Add support of sending LLDP frames on a configured VLAN
+
+lldpd (1.0.5)
+  * Changes:
+    + Interface names are also matched for management addresses.
+    + On Linux, only register protocol handler for LLDP when only LLDP
+      is enabled.
+    + Stricter on LLDP incoming frames validation.
+    + Add support for VLAN-aware bridges for Linux (no range support).
+    + Add support for 802.3BT (no SNMP support).
+    + Add support for millisecond-grained tx-interval (Jean-Pierre Tosoni).
+    + Use generic names for VLAN names, instead of interface names (eg
+      vlan100 instead of eth1.100).
+  * Fix:
+    + Don't clear chassis TLV on shutdown LLDPDU.
+    + Don't require/display powerpairs for Dot3 power when device type
+      is PD.
+
+lldpd (1.0.4)
+  * Changes:
+    + Add "configure system max-neighbors XX" command to modify maximum
+      of neighbors accepted per port.
+    + Implement lldpRemOrgDefInfoTable table for custom TLVs.
+  * Fix:
+    + Better compliance for statsTLVsUnrecognizedTotal and
+      statsAgeoutsTotal counters.
+    + On Linux, handle rare blocking case in Netlink code.
+
+lldpd (1.0.3)
+  * Fix:
+    + Fix creation of chroot directory.
+
 lldpd (1.0.2)
   * Changes:
     + On Linux, the monitor process will now drop its privileges
@@ -5,6 +137,9 @@ lldpd (1.0.2)
       CAP_NET_ADMIN and CAP_DAC_OVERRIDE capabilities.
     + Support for CDP PD PoE (with negotiation). Thanks to Gustav
       Wiklander.
+    + Move support for bonded devices on Linux < 2.6.27 into the
+      `--enable-oldies` option. This avoids duplicate packets
+      starting from Linux 4.19.
 
 lldpd (1.0.1)
   * Fix:

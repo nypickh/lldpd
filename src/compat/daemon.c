@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "compat.h"
 
 int
 daemon(int nochdir, int noclose)
@@ -49,18 +50,17 @@ daemon(int nochdir, int noclose)
 		_exit(0);
 	}
 
-	if (setsid() == -1)
-		return (-1);
+	if (setsid() == -1) return (-1);
 
-	if (!nochdir)
-		(void)chdir("/");
+	if (!nochdir) (void)chdir("/");
 
+	/* coverity[resource_leak]
+	   fd may be leaked if < 2, it's expected */
 	if (!noclose && (fd = open("/dev/null", O_RDWR, 0)) != -1) {
 		(void)dup2(fd, STDIN_FILENO);
 		(void)dup2(fd, STDOUT_FILENO);
 		(void)dup2(fd, STDERR_FILENO);
-		if (fd > 2)
-			(void)close (fd);
+		if (fd > 2) (void)close(fd);
 	}
 	return (0);
 }

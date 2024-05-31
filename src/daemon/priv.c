@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -38,15 +39,15 @@
 #include <netinet/if_ether.h>
 
 #ifdef HAVE_LINUX_CAPABILITIES
-#include <sys/capability.h>
-#include <sys/prctl.h>
+#  include <sys/capability.h>
+#  include <sys/prctl.h>
 #endif
 
-#if defined HOST_OS_FREEBSD || HOST_OS_OSX || HOST_OS_DRAGONFLY
-# include <net/if_dl.h>
+#if defined HOST_OS_FREEBSD || defined HOST_OS_OSX || defined HOST_OS_DRAGONFLY
+#  include <net/if_dl.h>
 #endif
 #if defined HOST_OS_SOLARIS
-# include <sys/sockio.h>
+#  include <sys/sockio.h>
 #endif
 
 /* Use resolv.h */
@@ -68,11 +69,11 @@
 
 /* Bionic has res_init() but it's not in any header */
 #if defined HAVE_RES_INIT && defined __BIONIC__
-int res_init (void);
+int res_init(void);
 #endif
 
 #ifdef ENABLE_PRIVSEP
-static int monitored = -1;		/* Child */
+static int monitored = -1; /* Child */
 #endif
 
 /* Proxies */
@@ -105,18 +106,17 @@ char *
 priv_gethostname()
 {
 	static char *buf = NULL;
-	int rc;
+	int len;
 	enum priv_cmd cmd = PRIV_GET_HOSTNAME;
 	must_write(PRIV_UNPRIVILEGED, &cmd, sizeof(enum priv_cmd));
 	priv_wait();
-	must_read(PRIV_UNPRIVILEGED, &rc, sizeof(int));
-	if ((buf = (char*)realloc(buf, rc+1)) == NULL)
-		fatal("privsep", NULL);
-	must_read(PRIV_UNPRIVILEGED, buf, rc);
-	buf[rc] = '\0';
+	must_read(PRIV_UNPRIVILEGED, &len, sizeof(int));
+	if (len < 0 || len > 255) fatalx("privsep", "too large value requested");
+	if ((buf = (char *)realloc(buf, len + 1)) == NULL) fatal("privsep", NULL);
+	must_read(PRIV_UNPRIVILEGED, buf, len);
+	buf[len] = '\0';
 	return buf;
 }
-
 
 int
 priv_iface_init(int index, char *iface)
@@ -184,8 +184,7 @@ priv_snmp_socket(struct sockaddr_un *addr)
 	must_write(PRIV_UNPRIVILEGED, addr, sizeof(struct sockaddr_un));
 	priv_wait();
 	must_read(PRIV_UNPRIVILEGED, &rc, sizeof(int));
-	if (rc < 0)
-		return rc;
+	if (rc < 0) return rc;
 	return receive_fd(PRIV_UNPRIVILEGED);
 }
 
@@ -204,8 +203,8 @@ asroot_ctl_cleanup()
 	int rc = 0;
 
 	must_read(PRIV_PRIVILEGED, &len, sizeof(int));
-	if ((ctlname = (char*)malloc(len+1)) == NULL)
-		fatal("ctlname", NULL);
+	if (len < 0 || len > PATH_MAX) fatalx("privsep", "too large value requested");
+	if ((ctlname = (char *)malloc(len + 1)) == NULL) fatal("privsep", NULL);
 
 	must_read(PRIV_PRIVILEGED, ctlname, len);
 	ctlname[len] = 0;
@@ -221,27 +220,24 @@ static void
 asroot_gethostname()
 {
 	struct utsname un;
-	struct addrinfo hints = {
-		.ai_flags = AI_CANONNAME
-	};
+	struct addrinfo hints = { .ai_flags = AI_CANONNAME };
 	struct addrinfo *res;
 	int len;
-	if (uname(&un) < 0)
-		fatal("privsep", "failed to get system information");
+	if (uname(&un) < 0) fatal("privsep", "failed to get system information");
 	if (getaddrinfo(un.nodename, NULL, &hints, &res) != 0) {
 		log_info("privsep", "unable to get system name");
 #ifdef HAVE_RES_INIT
 		res_init();
 #endif
-                len = strlen(un.nodename);
-                must_write(PRIV_PRIVILEGED, &len, sizeof(int));
-                must_write(PRIV_PRIVILEGED, un.nodename, len);
-        } else {
-                len = strlen(res->ai_canonname);
-                must_write(PRIV_PRIVILEGED, &len, sizeof(int));
-                must_write(PRIV_PRIVILEGED, res->ai_canonname, len);
+		len = strlen(un.nodename);
+		must_write(PRIV_PRIVILEGED, &len, sizeof(int));
+		must_write(PRIV_PRIVILEGED, un.nodename, len);
+	} else {
+		len = strlen(res->ai_canonname);
+		must_write(PRIV_PRIVILEGED, &len, sizeof(int));
+		must_write(PRIV_PRIVILEGED, res->ai_canonname, len);
 		freeaddrinfo(res);
-        }
+	}
 }
 
 static void
@@ -257,7 +253,7 @@ asroot_iface_init()
 	TRACE(LLDPD_PRIV_INTERFACE_INIT(name));
 	rc = asroot_iface_init_os(ifindex, name, &fd);
 	must_write(PRIV_PRIVILEGED, &rc, sizeof(rc));
-	if (rc == 0 && fd >=0) send_fd(PRIV_PRIVILEGED, fd);
+	if (rc == 0 && fd >= 0) send_fd(PRIV_PRIVILEGED, fd);
 	if (fd >= 0) close(fd);
 }
 
@@ -281,19 +277,19 @@ asroot_iface_multicast()
 	must_read(PRIV_PRIVILEGED, LLADDR(dlp), ETHER_ADDR_LEN);
 #elif defined HOST_OS_OPENBSD || defined HOST_OS_NETBSD || defined HOST_OS_SOLARIS
 	struct sockaddr *sap = (struct sockaddr *)&ifr.ifr_addr;
-#if ! defined HOST_OS_SOLARIS
+#  if !defined HOST_OS_SOLARIS
 	sap->sa_len = sizeof(struct sockaddr);
-#endif
+#  endif
 	sap->sa_family = AF_UNSPEC;
 	must_read(PRIV_PRIVILEGED, sap->sa_data, ETHER_ADDR_LEN);
 #else
-#error Unsupported OS
+#  error Unsupported OS
 #endif
 
 	must_read(PRIV_PRIVILEGED, &add, sizeof(int));
 	if (((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1) ||
-	    ((ioctl(sock, (add)?SIOCADDMULTI:SIOCDELMULTI,
-		    &ifr) < 0) && (errno != EADDRINUSE)))
+	    ((ioctl(sock, (add) ? SIOCADDMULTI : SIOCDELMULTI, &ifr) < 0) &&
+		(errno != EADDRINUSE)))
 		rc = errno;
 
 	if (sock != -1) close(sock);
@@ -309,8 +305,8 @@ asroot_iface_description()
 	must_read(PRIV_PRIVILEGED, &name, sizeof(name));
 	name[sizeof(name) - 1] = '\0';
 	must_read(PRIV_PRIVILEGED, &len, sizeof(int));
-	if ((description = (char*)malloc(len+1)) == NULL)
-		fatal("description", NULL);
+	if (len < 0 || len > PATH_MAX) fatalx("privsep", "too large value requested");
+	if ((description = (char *)malloc(len + 1)) == NULL) fatal("privsep", NULL);
 
 	must_read(PRIV_PRIVILEGED, description, len);
 	description[len] = 0;
@@ -340,6 +336,7 @@ asroot_snmp_socket()
 
 	if (!addr) {
 		addr = (struct sockaddr_un *)malloc(sizeof(struct sockaddr_un));
+		if (!addr) fatal("privsep", NULL);
 		must_read(PRIV_PRIVILEGED, addr, sizeof(struct sockaddr_un));
 	} else
 		/* We have already been asked to connect to a socket. We will
@@ -347,28 +344,28 @@ asroot_snmp_socket()
 		must_read(PRIV_PRIVILEGED, &bogus, sizeof(struct sockaddr_un));
 	if (addr->sun_family != AF_UNIX)
 		fatal("privsep", "someone is trying to trick me");
-	addr->sun_path[sizeof(addr->sun_path)-1] = '\0';
+	addr->sun_path[sizeof(addr->sun_path) - 1] = '\0';
 
 	if ((sock = socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
 		log_warn("privsep", "cannot open socket");
 		must_write(PRIV_PRIVILEGED, &sock, sizeof(int));
 		return;
 	}
-        if ((rc = connect(sock, (struct sockaddr *) addr,
-		    sizeof(struct sockaddr_un))) != 0) {
-		log_info("privsep", "cannot connect to %s: %s",
-                          addr->sun_path, strerror(errno));
+	if ((rc = connect(sock, (struct sockaddr *)addr, sizeof(struct sockaddr_un))) !=
+	    0) {
+		log_info("privsep", "cannot connect to %s: %s", addr->sun_path,
+		    strerror(errno));
 		close(sock);
 		rc = -1;
 		must_write(PRIV_PRIVILEGED, &rc, sizeof(int));
 		return;
-        }
+	}
 
 	int flags;
 	if ((flags = fcntl(sock, F_GETFL, NULL)) < 0 ||
 	    fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) {
 		log_warn("privsep", "cannot set sock %s to non-block : %s",
-                          addr->sun_path, strerror(errno));
+		    addr->sun_path, strerror(errno));
 
 		close(sock);
 		rc = -1;
@@ -383,23 +380,20 @@ asroot_snmp_socket()
 
 struct dispatch_actions {
 	enum priv_cmd msg;
-	void(*function)(void);
+	void (*function)(void);
 };
 
-static struct dispatch_actions actions[] = {
-	{PRIV_PING, asroot_ping},
-	{PRIV_DELETE_CTL_SOCKET, asroot_ctl_cleanup},
-	{PRIV_GET_HOSTNAME, asroot_gethostname},
+static struct dispatch_actions actions[] = { { PRIV_PING, asroot_ping },
+	{ PRIV_DELETE_CTL_SOCKET, asroot_ctl_cleanup },
+	{ PRIV_GET_HOSTNAME, asroot_gethostname },
 #ifdef HOST_OS_LINUX
-	{PRIV_OPEN, asroot_open},
+	{ PRIV_OPEN, asroot_open },
 #endif
-	{PRIV_IFACE_INIT, asroot_iface_init},
-	{PRIV_IFACE_MULTICAST, asroot_iface_multicast},
-	{PRIV_IFACE_DESCRIPTION, asroot_iface_description},
-	{PRIV_IFACE_PROMISC, asroot_iface_promisc},
-	{PRIV_SNMP_SOCKET, asroot_snmp_socket},
-	{-1, NULL}
-};
+	{ PRIV_IFACE_INIT, asroot_iface_init },
+	{ PRIV_IFACE_MULTICAST, asroot_iface_multicast },
+	{ PRIV_IFACE_DESCRIPTION, asroot_iface_description },
+	{ PRIV_IFACE_PROMISC, asroot_iface_promisc },
+	{ PRIV_SNMP_SOCKET, asroot_snmp_socket }, { -1, NULL } };
 
 /* Main loop, run as root */
 static void
@@ -410,10 +404,10 @@ priv_loop(int privileged, int once)
 
 #ifdef ENABLE_PRIVSEP
 	setproctitle("monitor.");
-#ifdef USE_SECCOMP
+#  ifdef USE_SECCOMP
 	if (priv_seccomp_init(privileged, monitored) != 0)
-	   fatal("privsep", "cannot continue without seccomp setup");
-#endif
+		fatal("privsep", "cannot continue without seccomp setup");
+#  endif
 #endif
 	while (!may_read(PRIV_PRIVILEGED, &cmd, sizeof(enum priv_cmd))) {
 		log_debug("privsep", "received command %d", cmd);
@@ -423,8 +417,7 @@ priv_loop(int privileged, int once)
 				break;
 			}
 		}
-		if (a->function == NULL)
-			fatalx("privsep", "bogus message received");
+		if (a->function == NULL) fatalx("privsep", "bogus message received");
 		if (once) break;
 	}
 }
@@ -433,17 +426,18 @@ priv_loop(int privileged, int once)
  * the other case, it should be called when we wait an action from the
  * privileged side. */
 void
-priv_wait() {
+priv_wait()
+{
 #ifndef ENABLE_PRIVSEP
 	/* We have no remote process on the other side. Let's emulate it. */
 	priv_loop(0, 1);
 #endif
 }
 
-
 #ifdef ENABLE_PRIVSEP
 static void
-priv_exit_rc_status(int rc, int status) {
+priv_exit_rc_status(int rc, int status)
+{
 	switch (rc) {
 	case 0:
 		/* kill child */
@@ -488,8 +482,7 @@ static void
 sig_pass_to_chld(int sig)
 {
 	int oerrno = errno;
-	if (monitored != -1)
-		kill(monitored, sig);
+	if (monitored != -1) kill(monitored, sig);
 	errno = oerrno;
 }
 
@@ -510,11 +503,34 @@ sig_chld(int sig)
 	priv_exit_rc_status(rc, status);
 }
 
-/* Create a directory recursively. */
-static int mkdir_p(const char *pathname, mode_t mode)
+/* Create a subdirectory and check if it's here. */
+static int
+_mkdir(const char *pathname, mode_t mode)
 {
-	char path[PATH_MAX+1], current[PATH_MAX+1];
-	char *tok;
+	int save_errno;
+	if (mkdir(pathname, mode) == 0 || errno == EEXIST) {
+		errno = 0;
+		return 0;
+	}
+
+	/* We can get EROFS on some platforms. Let's check if the directory exists. */
+	save_errno = errno;
+	if (chdir(pathname) == -1) {
+		errno = save_errno;
+		return -1;
+	}
+
+	/* We should restore current directory, but in the context we are
+	 * running, we do not care. */
+	return 0;
+}
+
+/* Create a directory recursively. */
+static int
+mkdir_p(const char *pathname, mode_t mode)
+{
+	char path[PATH_MAX + 1];
+	char *current;
 
 	if (strlcpy(path, pathname, sizeof(path)) >= sizeof(path)) {
 		errno = ENAMETOOLONG;
@@ -522,22 +538,19 @@ static int mkdir_p(const char *pathname, mode_t mode)
 	}
 
 	/* Use strtok which will provides non-empty tokens only. */
-	if (path[0] == '/') current[0] = '/';
-	tok = strtok(path, "/");
-	while (tok) {
-		strcat(current, tok);
-		if (mkdir(current, mode) != 0 && errno != EEXIST)
-			return -1;
-		strcat(current, "/");
-		tok = strtok(NULL, "/");
+	for (current = path + 1; *current; current++) {
+		if (*current != '/') continue;
+		*current = '\0';
+		if (_mkdir(path, mode) != 0) return -1;
+		*current = '/';
 	}
+	if (_mkdir(path, mode) != 0) return -1;
 
-	errno = 0;
 	return 0;
 }
 
 /* Initialization */
-#define LOCALTIME "/etc/localtime"
+#  define LOCALTIME "/etc/localtime"
 static void
 priv_setup_chroot(const char *chrootdir)
 {
@@ -549,12 +562,10 @@ priv_setup_chroot(const char *chrootdir)
 	/* Check if /etc/localtime exists in chroot or outside chroot */
 	char path[1024];
 	int source = -1, destination = -1;
-	if (snprintf(path, sizeof(path),
-		"%s" LOCALTIME, chrootdir) >= sizeof(path))
+	if (snprintf(path, sizeof(path), "%s" LOCALTIME, chrootdir) >= sizeof(path))
 		return;
 	if ((source = open(LOCALTIME, O_RDONLY)) == -1) {
-		if (errno == ENOENT)
-			return;
+		if (errno == ENOENT) return;
 		log_warn("privsep", "cannot read " LOCALTIME);
 		return;
 	}
@@ -563,8 +574,7 @@ priv_setup_chroot(const char *chrootdir)
 	path[strlen(chrootdir) + 4] = '\0';
 	if (mkdir(path, 0755) == -1) {
 		if (errno != EEXIST) {
-			log_warn("privsep", "unable to create %s directory",
-			    path);
+			log_warn("privsep", "unable to create %s directory", path);
 			close(source);
 			return;
 		}
@@ -575,10 +585,9 @@ priv_setup_chroot(const char *chrootdir)
 	char buffer[1024];
 	ssize_t n;
 	mode_t old = umask(S_IWGRP | S_IWOTH);
-	if ((destination = open(path,
-		    O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0666)) == -1) {
-		if (errno != EEXIST)
-			log_warn("privsep", "cannot create %s", path);
+	if ((destination = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0666)) ==
+	    -1) {
+		if (errno != EEXIST) log_warn("privsep", "cannot create %s", path);
 		close(source);
 		umask(old);
 		return;
@@ -617,49 +626,48 @@ static void
 sig_chld(int sig)
 {
 	int status = 0;
-	while (waitpid(-1, &status, WNOHANG) > 0);
+	while (waitpid(-1, &status, WNOHANG) > 0)
+		;
 }
 
 #endif
 
-void
+#ifdef ENABLE_PRIVSEP
+static void
 priv_drop(uid_t uid, gid_t gid)
 {
 	gid_t gidset[1];
 	gidset[0] = gid;
 	log_debug("privsep", "dropping privileges");
-#ifdef HAVE_SETRESGID
-	if (setresgid(gid, gid, gid) == -1)
-		fatal("privsep", "setresgid() failed");
-#else
-	if (setregid(gid, gid) == -1)
-		fatal("privsep", "setregid() failed");
-#endif
-	if (setgroups(1, gidset) == -1)
-		fatal("privsep", "setgroups() failed");
-#ifdef HAVE_SETRESUID
-	if (setresuid(uid, uid, uid) == -1)
-		fatal("privsep", "setresuid() failed");
-#else
-	if (setreuid(uid, uid) == -1)
-		fatal("privsep", "setreuid() failed");
-#endif
+#  ifdef HAVE_SETRESGID
+	if (setresgid(gid, gid, gid) == -1) fatal("privsep", "setresgid() failed");
+#  else
+	if (setregid(gid, gid) == -1) fatal("privsep", "setregid() failed");
+#  endif
+	if (setgroups(1, gidset) == -1) fatal("privsep", "setgroups() failed");
+#  ifdef HAVE_SETRESUID
+	if (setresuid(uid, uid, uid) == -1) fatal("privsep", "setresuid() failed");
+#  else
+	if (setreuid(uid, uid) == -1) fatal("privsep", "setreuid() failed");
+#  endif
 }
 
-void
+static void
 priv_caps(uid_t uid, gid_t gid)
 {
-#ifdef HAVE_LINUX_CAPABILITIES
+#  ifdef HAVE_LINUX_CAPABILITIES
 	cap_t caps;
 	const char *caps_strings[2] = {
 		"cap_dac_override,cap_net_raw,cap_net_admin,cap_setuid,cap_setgid=pe",
 		"cap_dac_override,cap_net_raw,cap_net_admin=pe"
 	};
-	log_debug("privsep", "getting CAP_NET_RAW/ADMIN and CAP_DAC_OVERRIDE privilege");
+	log_debug("privsep",
+	    "getting CAP_NET_RAW/ADMIN and CAP_DAC_OVERRIDE privilege");
 	if (!(caps = cap_from_text(caps_strings[0])))
 		fatal("privsep", "unable to convert caps");
 	if (cap_set_proc(caps) == -1) {
-		log_warn("privsep", "unable to drop privileges, monitor running as root");
+		log_warn("privsep",
+		    "unable to drop privileges, monitor running as root");
 		cap_free(caps);
 		return;
 	}
@@ -675,13 +683,18 @@ priv_caps(uid_t uid, gid_t gid)
 	if (cap_set_proc(caps) == -1)
 		fatal("privsep", "unable to drop extra privileges");
 	cap_free(caps);
-#else
+#  else
 	log_info("privsep", "no libcap support, running monitor as root");
-#endif
+#  endif
 }
+#endif
 
 void
+#ifdef ENABLE_PRIVSEP
 priv_init(const char *chrootdir, int ctl, uid_t uid, gid_t gid)
+#else
+priv_init(void)
+#endif
 {
 
 	int pair[2];
@@ -697,8 +710,7 @@ priv_init(const char *chrootdir, int ctl, uid_t uid, gid_t gid)
 
 #ifdef ENABLE_PRIVSEP
 	/* Spawn off monitor */
-	if ((monitored = fork()) < 0)
-		fatal("privsep", "unable to fork monitor");
+	if ((monitored = fork()) < 0) fatal("privsep", "unable to fork monitor");
 	switch (monitored) {
 	case 0:
 		/* We are in the children, drop privileges */
@@ -708,8 +720,7 @@ priv_init(const char *chrootdir, int ctl, uid_t uid, gid_t gid)
 			priv_setup_chroot(chrootdir);
 			if (chroot(chrootdir) == -1)
 				fatal("privsep", "unable to chroot");
-			if (chdir("/") != 0)
-				fatal("privsep", "unable to chdir");
+			if (chdir("/") != 0) fatal("privsep", "unable to chdir");
 			priv_drop(uid, gid);
 		}
 		close(pair[1]);
@@ -725,31 +736,25 @@ priv_init(const char *chrootdir, int ctl, uid_t uid, gid_t gid)
 		priv_caps(uid, gid);
 
 		/* Install signal handlers */
-		const struct sigaction pass_to_child = {
-			.sa_handler = sig_pass_to_chld,
-			.sa_flags = SA_RESTART
-		};
+		const struct sigaction pass_to_child = { .sa_handler = sig_pass_to_chld,
+			.sa_flags = SA_RESTART };
 		sigaction(SIGALRM, &pass_to_child, NULL);
 		sigaction(SIGTERM, &pass_to_child, NULL);
-		sigaction(SIGHUP,  &pass_to_child, NULL);
-		sigaction(SIGINT,  &pass_to_child, NULL);
+		sigaction(SIGHUP, &pass_to_child, NULL);
+		sigaction(SIGINT, &pass_to_child, NULL);
 		sigaction(SIGQUIT, &pass_to_child, NULL);
-		const struct sigaction child = {
-			.sa_handler = sig_chld,
-			.sa_flags = SA_RESTART
-		};
+		const struct sigaction child = { .sa_handler = sig_chld,
+			.sa_flags = SA_RESTART };
 		sigaction(SIGCHLD, &child, NULL);
-		sig_chld(0);	/* Reap already dead children */
+		sig_chld(0); /* Reap already dead children */
 		priv_loop(pair[1], 0);
 		exit(0);
 	}
 #else
-	const struct sigaction child = {
-		.sa_handler = sig_chld,
-		.sa_flags = SA_RESTART
-	};
+	const struct sigaction child = { .sa_handler = sig_chld,
+		.sa_flags = SA_RESTART };
 	sigaction(SIGCHLD, &child, NULL);
-	sig_chld(0);	/* Reap already dead children */
+	sig_chld(0); /* Reap already dead children */
 	log_warnx("priv", "no privilege separation available");
 	priv_ping();
 #endif
