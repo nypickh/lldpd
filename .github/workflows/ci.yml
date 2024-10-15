@@ -108,27 +108,20 @@ jobs:
         os:
           - name: freebsd
             version: '13.3'
-            runner: macos-12
-            hypervisor: qemu
           - name: netbsd
             version: '9.3'
-            runner: macos-12
-            hypervisor: qemu
           - name: openbsd
             version: '7.4'
-            runner: macos-12
-            hypervisor: xhyve
-    runs-on: ${{ matrix.os.runner }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Test on ${{ matrix.os.name }}
-        uses: cross-platform-actions/action@v0.24.0
+        uses: cross-platform-actions/action@v0.25.0
         with:
           operating_system: ${{ matrix.os.name }}
           version: ${{ matrix.os.version }}
-          hypervisor: ${{ matrix.os.hypervisor }}
           environment_variables: LLDPD_CONFIG_ARGS
           shell: bash
           run: |
@@ -164,7 +157,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
